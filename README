@@ -1,0 +1,48 @@
+MEANT TO WORK ONLY ON BACTERIA!!!
+
+The script select_putative_Circular_from_split_reads.pl select split reads from an
+RNAseq fastq (single or paired) according to specific filters and cutoff.
+
+To be selected split reads must:
+- Map with 2 non-overlapping matches on the reference genome.
+The 2 matches from the selected split reads must suggest a possible backsplice,
+therefore they must:
+- Be on the same strand but showing an inverted order.
+
+
+READ
+|--------#------------>
+
+REFERENCE GENOME
+-----------------------------------------------------------------
+-----------------------------------------------------------------
+
+SPLIT MAPPINGS OF READ ON REFERENCE
+-----------------------------------------------------------------
+-----------------------------------------------------------------
+            #------------>      |--------#        
+                          
+                          
+The script takes in input, in addition to the fastq the:
+- The path and name to the genome fasta indexed to run bwa
+- A bed file with the map of the genes from bedtools
+- A reference file with seqid and length of the sequence in the genome fasta
+  to be used as header for samtools
+- The paths and names of executable folders
+
+Programs needed are:
+- bwa-mem
+- samtools
+- seqtk
+- bedtools
+
+All the variable to set are present at the beginning of the script and should be
+set before to start in the section:
+# VARIABLES TO SET FOR FILENAMES AND PARAMETERS
+
+The bed file with the genes coordinates should be prepared with the script
+gff3_to_bed_only_gene_coords.pl run on the ensembl gff3 annotation of the genome
+
+The reference file with seqid and length should be prepared with the script
+write_reference_for_samtools.pl run on the genome fasta.
+
