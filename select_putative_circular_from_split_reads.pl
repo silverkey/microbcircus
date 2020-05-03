@@ -42,10 +42,10 @@ my $splitted_gene_overlap = "$experiment\_splitted_gene_overlap.txt";
 
 # Map on the genome with BWA and retain only all the matches, non-mapping reads are discarded piping to samtools
 my $bwa_command = "$bwa mem -t $threads $genome $fastq \| $samtools view -F4 -o $bwa_out";
-run_command($bwa_command);
+run_command($bwa_command) if $run_commands;
 # Select only split reads using samtools
 my $samtools_command = "$samtools view -b -t $reference -f 2048 -o $samtools_out $bwa_out";
-run_command($samtools_command);
+run_command($samtools_command) if $run_commands;
 
 # Load the .bam containing only the split reads
 my $bam = Bio::DB::Sam->new(-bam => "$samtools_out",
@@ -84,32 +84,72 @@ while(my $match = $matches->next_seq) {
   my @cigar2 = split_cigar($split[3]);
   next if $cigar2[0] eq 'NOTOK';
 
-  # Calculate the end of the secondary match
-  my $bend = $split[1]+$cigar2[4]-1;
+  my $achr = $chr;
+  my $astart = $start;
+  my $aend = $end;
+  my $astrand = $strand;
+  my $ascore = $score;
+  my $bchr = $split[0];
+  my $bstart = $split[1];
+  my $bend = $cigar2[1] eq 'M' ? $bstart+$cigar2[0] : $bstart+$cigar2[2];
+  my $bstrand = $split[2];
+  my $bscore = $split[4];
 
   # Select only those split reads that pass the stringent filtering
   # The 2 matches must be on the same reference sequence
   # Score must be [>=$score_cutoff] for both the primary and the secondary matches
   # The strand must be the same for both the matches
   # The cigars should be equal in terms of number and not equal in term of caracthers (e.g. 30M35H and 30S35M is OK while 30M35H and 30M35S is NOT OK)
-  if($chr eq $split[0] and $score>=$score_cutoff and $split[4]>=$score_cutoff and $strand eq $split[2] and 
+  if($achr eq $bchr and $ascore>=$score_cutoff and $bscore>=$score_cutoff and $astrand eq $bstrand and 
      $cigar1[1] ne $cigar2[1] and $cigar1[3] ne $cigar2[3] and $cigar1[0]==$cigar2[0] and $cigar1[2]==$cigar2[2]) {
 
-    # The length of the fragments between the two split matches should be inside a range of 150-1500 nucleotides
-    my $abs_start = $strand eq '+' ? $split[1] : $start;
-    my $abs_end = $strand eq '+' ? $end : $bend;
-    my $abs_length = $abs_end-$abs_start;
+    # Now we need to select only the split that can suggest a backsplice site. The following workaround is done keeping in mind that
+    # THE CIGAR IS REFERRED TO THE GENOME AND IS REVERSE COMPLEMENTED WHEN THE STRAND OF THE MATCH IS NEGATIVE
 
+    my $abs_start;
+    my $abs_end;
+
+    # the strand is + and the M is the first so a is the first part of query and should come after b
+    if($cigar1[1] eq 'M' and $strand eq '+') {
+      if($astart > $bstart) {
+        $abs_start = $bstart;
+        $abs_end = $aend;
+      }
+    }
+    # the strand is - and the M is the first so a is the second part of query and should come after b
+    elsif($cigar1[1] eq 'M' and $strand eq '-') {
+      if($astart > $bstart) {
+        $abs_start = $bstart;
+        $abs_end = $aend;
+      }
+    }
+   # the strand is + and M is the second so a is the second part of query and should come before b
+   elsif($cigar1[3] eq 'M' and $strand eq '+') {
+      if($astart < $bstart) {
+        $abs_start = $astart;
+        $abs_end = $bend;
+      }
+    }
+    # the strand is - and M is the second so a is the first part of query and should come before b
+    elsif($cigar1[3] eq 'M' and $strand eq '-') {
+      if($astart < $bstart) {
+        $abs_start = $astart;
+        $abs_end = $bend;
+      }
+    }
+
+    # If abs_start is undefined means that the split does not suggest a backsplice but a simple splice
+    next unless $abs_start;
+
+    my $abs_length = $abs_end - $abs_start + 1;
+    
     if($abs_length >= $min_leng_cutoff and $abs_length <= $max_leng_cutoff) {
-      # This "if" was initially done in the following (now simplified) way:
-      # if(($strand eq '+' and $end-$split[1]>=150 and $end-$split[1]<=1500) or 
-      # ($strand eq '-' and $bend-$start>=150 and $bend-$start<=1500)) {
 
       # Print all the info in output if the filters have been passed
       $readhref->{$read} ++;
       my $read_i = "$read\_".$readhref->{$read};
-      $reshref->{$read}->{$read_i} = join("\t",$read,$read_i,$mate,$chr,$start,$end,$strand,$cigar,@cigar1,$score,
-                                                          $split[0],$split[1],$bend,$split[2],$split[3],@cigar2,$split[4],
+      $reshref->{$read}->{$read_i} = join("\t",$read,$read_i,$mate,$achr,$astart,$aend,$astrand,$cigar,@cigar1,$ascore,
+                                                          $bchr,$bstart,$bend,$bstrand,$split[3],@cigar2,$bscore,
                                                           $abs_start,$abs_end,$abs_length);
 
       print BED join("\t",$chr,$abs_start,$abs_end,$read_i)."\n";
@@ -192,7 +232,7 @@ sub split_cigar {
 
 sub run_command {
   my $command = shift;
-  return unless $run_commands;
+#  return unless $run_commands;
   print "\nLAUNCHING SYSTEM CALL:\n\t$command\n";
   system($command);
   die "ERROR using command:\n\t$command\:\n\t$!" unless $? == 0;
