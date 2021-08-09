@@ -16,15 +16,24 @@ library(GenomicFeatures)
 
 # Use TRUE for non-strand-specific sequencing
 # Use FALSE for strand-specific sequencing
-ignore.strand=TRUE
+ignore.strand=FALSE
+
+define.strand.mate.1 = function(x) {
+  mate = x[3]
+  astrand = x[7]
+  if((mate == '1' & astrand == '+') | (mate == '2' & astrand == '-')) return('+')
+  if((mate == '2' & astrand == '+') | (mate == '1' & astrand == '-')) return('-')
+  return(NA)
+}
 
 calculate.overlaps = function(tab) {
   out = gsub('.xls','_overlaps.xls',tab)
   t = read.table(tab,head=T,sep='\t',comment.char='',quote='')
-  r = GRanges(seqnames=t$achr,ranges=IRanges(start=t$abs_start,end=t$abs_end),strand=t$astrand)
+  t$mate1_strand = apply(t,1,define.strand.mate.1)
+  r = GRanges(seqnames=t$achr,ranges=IRanges(start=t$abs_start,end=t$abs_end),strand=t$mate1_strand)
   t$overlaps = countOverlaps(r,r,ignore.strand=ignore.strand)
   t$overlaps = t$overlaps -1
-  t = t[,c(1:28,36,29:35)]
+  t = t[,c(1:28,37,36,29:35)]
   write.table(t,file=out,sep='\t',col.names=TRUE,row.names=FALSE,quote=FALSE)
 }
 
