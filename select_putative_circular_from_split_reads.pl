@@ -91,7 +91,7 @@ while(my $match = $matches->next_seq) {
   my $ascore = $score;
   my $bchr = $split[0];
   my $bstart = $split[1];
-  my $bend = $cigar2[1] eq 'M' ? $bstart+$cigar2[0] : $bstart+$cigar2[2];
+  my $bend = $cigar2[1] eq 'M' ? $bstart+$cigar2[0]-1 : $bstart+$cigar2[2]-1;
   my $bstrand = $split[2];
   my $bscore = $split[4];
 
